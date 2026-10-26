@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
 import { createClient, configureLogger, segment } from 'douyin-im';
 
 const DIR = process.env.DOUYIN_SOCIAL_DIR || path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,67 @@ function saveState(s) { try { fs.writeFileSync(STATE, JSON.stringify(s)); } catc
 let state = loadState();
 if (state.date !== today()) { state = { date: today(), replies: 0 }; saveState(state); }
 function countReply() { state.replies = (state.replies || 0) + 1; saveState(state); }
+
+// ---- 防误归档：会话被归档后，回合在 pre-step 就被拒（表现只是"没有产出文本"），
+//      这里提前认出来，回一句人话并把恢复标记交给看门狗，别让用户对着兜底话术猜。
+const ARCHIVE_FLAG = path.join(DIR, 'archived.flag');
+let archivedCacheAt = 0;
+let archivedCache = new Set();
+
+function mapFile() {
+  const p = String(socialCfg().mapFile || '').trim();
+  return p || path.join(DIR, 'sessions.json');
+}
+function boundSessionId(key) {
+  try {
+    const m = JSON.parse(fs.readFileSync(mapFile(), 'utf8'));
+    return typeof m[key] === 'string' ? m[key] : '';
+  } catch (e) { return ''; }
+}
+function archivedSet() {
+  if (Date.now() - archivedCacheAt < 30000) return archivedCache;
+  let set = new Set();
+  const home = String(CFG.dshHome || process.env.DSH_HOME || '').trim();
+  if (home) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(home, 'storages', 'workspace.json'), 'utf8'));
+      set = new Set((j.global && j.global.archivedSessionIds || []).map(String));
+    } catch (e) {}
+  }
+  archivedCacheAt = Date.now();
+  archivedCache = set;
+  return set;
+}
+/** 归档了就返回那个 sessionId，否则空串 */
+function archivedSessionOf(key) {
+  if (socialCfg().autoUnarchive === false) return '';
+  const sid = boundSessionId(key);
+  return sid && archivedSet().has(sid) ? sid : '';
+}
+function flagArchived(sid, key) {
+  try {
+    fs.writeFileSync(ARCHIVE_FLAG, JSON.stringify({ sessionId: sid, key: key, at: new Date().toISOString() }, null, 2), 'utf8');
+  } catch (e) {}
+  kickRecovery();
+}
+
+/** 顺手把恢复任务排上，别等看门狗那一轮（5 分钟）；排不上就算了，看门狗会兜底 */
+function kickRecovery() {
+  if (process.platform !== 'win32') return;
+  const task = 'dsh-douyin-recover-archived-once';
+  const script = path.join(DIR, 'recover-archived.ps1');
+  const pwsh = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+  execFile('schtasks', ['/query', '/tn', task], (err) => {
+    if (!err) return;                       // 已经排着一次了
+    const tr = '"' + pwsh + '" -NoProfile -ExecutionPolicy Bypass -File "' + script + '"';
+    execFile('schtasks', ['/create', '/tn', task, '/tr', tr, '/sc', 'once', '/st', '00:00', '/ru', 'SYSTEM', '/rl', 'HIGHEST', '/f'], (e2) => {
+      if (e2) { log('RECOVER_TASK_CREATE_FAIL ' + (e2.message || e2)); return; }
+      execFile('schtasks', ['/run', '/tn', task], (e3) => {
+        log('RECOVER_TASK_RUN ' + (e3 ? (e3.message || e3) : 'ok'));
+      });
+    });
+  });
+}
 
 // ---- 去抖：同一会话短时间内只处理最后一条 ----
 const lastAt = new Map();
@@ -276,6 +338,16 @@ client.on('message', async function (ev) {
       payload = payload + '\n\n（如果这条你判断不需要回，就只输出 [SKIP] 四个字符，不要输出任何别的。）';
     }
     // 人设不再塞进消息正文 —— 启动时已经写进会话 cwd 的 AGENTS.md（见 applyPersona）
+
+    // 绑定的会话被归档了？先认出来：这种情况 DSH 那边一个字都不会生成，
+    // 再往下走只会拿到"没有产出文本"，用户对着兜底话术根本猜不到原因。
+    const archivedSid = archivedSessionOf(key);
+    if (archivedSid) {
+      log('ARCHIVED_DETECTED key=' + key + ' session=' + archivedSid);
+      flagArchived(archivedSid, key);
+      await ev.reply('我这边会话被归档了，正在恢复，过一会儿再发我一句就行');
+      return;
+    }
 
     let reply;
     try {

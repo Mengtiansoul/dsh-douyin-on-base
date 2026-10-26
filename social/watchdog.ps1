@@ -34,10 +34,27 @@ if ($socialOff -eq 'true') {
   exit 0
 }
 
+# ---- 防误归档：桥写了 archived.flag 就排一次恢复任务（桥活着也可能被归档，所以放在存活检查前）----
+$Flag = Join-Path $Dir 'archived.flag'
+if (Test-Path $Flag) {
+  $TaskName = 'dsh-douyin-recover-archived-once'
+  $exist = (schtasks /query /tn $TaskName 2>$null)
+  if ($LASTEXITCODE -ne 0) {
+    W 'ARCHIVED_FLAG -> scheduling recovery'
+    $pwsh = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+    if (-not (Test-Path $pwsh)) { $pwsh = 'powershell.exe' }
+    $tr = '"' + $pwsh + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Dir 'recover-archived.ps1') + '"'
+    (schtasks /create /tn $TaskName /tr $tr /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f 2>&1) | ForEach-Object { W ('create: ' + $_) }
+    (schtasks /run /tn $TaskName 2>&1) | ForEach-Object { W ('run: ' + $_) }
+  } else {
+    W 'ARCHIVED_FLAG pending (recovery task already scheduled)'
+  }
+  exit 0
+}
+
 if ($found.Count -gt 0) { exit 0 }
 
-W 'DOWN -> restarting'
-try {
+W 'DOWN -> restarting'try {
   Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' `
     -ArgumentList 'bridge.mjs' `
     -WorkingDirectory $Dir `

@@ -66,6 +66,7 @@ dsh plugin --profile web add link:/path/to/douyin-on-base
 2. 社交模块首次运行要扫码或短信登录（登录态存在 `data/`，之后自动恢复）
 3. 内容模块需要 star-browser 管家在跑
 
+另外建议把 `dshHome` 填上（就是这个 DSH 实例的家目录）。填了之后，万一社交会话被误归档，插件能认出来并自己捞回来；不填只影响这一项检查，收发消息不受影响。
 ## 文件说明
 
 | 文件 | 作用 |
@@ -79,6 +80,8 @@ dsh plugin --profile web add link:/path/to/douyin-on-base
 | `social/watchdog.ps1` | 看门狗，桥挂了拉起来；社交模块关闭时停掉它 |
 | `social/content-guard-loop.ps1` | 内容守卫，按限额/时段/中断关浏览器 |
 | `social/daily-report.mjs` | 生成刷视频日报 |
+| `social/register-workspace.mjs` | 把通道会话登记进独立工作区、解归档（停宿主时用） |
+| `social/recover-archived.ps1` | 被误归档时的自动恢复（看门狗排的一次性任务调用） |
 | `social/daily-report-guide.md` | 日报的写作要求 |
 | `social/selfcheck.ps1` | 自检，查任务/端口/配置/进程 |
 | `social/backup.ps1` | 每日备份登录态与配置 |

@@ -28,6 +28,17 @@
 
 加一堆「别调工具、只回文字」的提示词治不了归档——那是闸门在 pre-step 就拒了，模型根本没机会看到消息。
 
+### 误归档现在会自己恢复
+
+从 2026-10-26 起插件自带一条「防误归档」的路：
+
+1. 桥在处理每条消息前读一次 `{dshHome}/storages/workspace.json`（30 秒缓存），发现绑定的会话在归档列表里，就不走兜底话术，直接回一句「我这边会话被归档了，正在恢复」，同时写 `social/archived.flag`。
+2. 看门狗（每 5 分钟）看到这个 flag，排一次性任务 `social/recover-archived.ps1`：等 60 秒 → 停宿主 → `register-workspace.mjs --unarchive <id>` → 起宿主 → 清 flag。
+3. 前提是 `config.json` 的 `dshHome` 填对（本机 `D:/Deepseek-Harness/DSH`）。留空只跳过这项检查，收发不受影响。
+4. 不想要自动恢复就把 `social.autoUnarchive` 设成 `false`。
+
+代价说清楚：恢复本身要停宿主几十秒，所以故意延迟 60 秒才开始，正在聊的天先说完。
+
 ### 新接一条通道时：工作区要登记，不是建目录就行
 
 DSH 的工作区是**注册表**，不是磁盘目录：`{DSH_HOME}/storages/workspace.json` 的 `global.workspaceIds` + `tables.workspaces` 里没有记录，光 `mkdir` 侧栏也不会出现。而且会话首帧的 cwd 必须等于工作区 `path`，否则 attach 失败。
