@@ -1,0 +1,21 @@
+{
+  "name": "dsh-douyin-on-base-ui",
+  "version": "0.1.0",
+  "description": "抖音助手 —— 设置面板（浏览器半身）",
+  "type": "module",
+  "main": "./host.mjs",
+  "exports": {
+    ".": "./host.mjs",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ]
+    }
+  },
+  "private": true
+}
