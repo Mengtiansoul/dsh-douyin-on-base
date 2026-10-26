@@ -129,6 +129,11 @@ window.__ModuleLoader__.load({
       k: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary, rgba(127,127,127,.9))' },
       v: { fontSize: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary, inherit)',
         fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' },
+      // Tab 三态共用同一套盒模型：字重、内边距、高度都不随选中变，
+      // 否则 400→600 的字重一换，文本宽度就变，按钮跟着被撑大。
+      tabBase: { height: '32px', padding: '0 16px', borderRadius: R.control, cursor: 'pointer',
+        fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', border: 'none',
+        transition: 'background .15s ease, color .15s ease, box-shadow .15s ease' },
       msg: { fontSize: '12px', padding: '8px 10px', borderRadius: R.control,
         background: 'var(--dsw-alias-bg-layer-2, rgba(127,127,127,.1))' },
     };
@@ -637,7 +642,9 @@ window.__ModuleLoader__.load({
             var active = tab === kv[0];
             return h('button', {
               key: kv[0],
-              style: Object.assign({}, active ? C.btn : C.btnGhost, { padding: '7px 16px' }),
+              style: Object.assign({}, C.tabBase, active
+                ? { color: '#fff', background: '#2f6fed', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(15,23,42,.18)' }
+                : { color: 'inherit', background: 'transparent', boxShadow: SH.control }),
               onClick: function () { setTab(kv[0]); },
             }, kv[1]);
           })
