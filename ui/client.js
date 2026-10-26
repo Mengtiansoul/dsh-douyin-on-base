@@ -66,11 +66,37 @@ window.__ModuleLoader__.load({
       });
     }
 
+    // —— 视觉尺度 ——
+    // 圆角同心：外层 14 → 内嵌块 10 → 控件 8，每层差 4，圆心对齐。
+    // 描边一律拿 inset 阴影画，不用 border：hover / 聚焦只改阴影颜色，
+    // 不会有「选中时加粗把盒子撑大 1px」的抖动。
+    var R = { card: '14px', block: '10px', control: '8px', pill: '999px' };
+    var EDGE = 'var(--dsw-alias-border-l2, rgba(127,127,127,.3))';
+    var EDGE_SOFT = 'var(--dsw-alias-border-l3, rgba(127,127,127,.16))';
+    var SH = {
+      card: 'inset 0 0 0 1px ' + EDGE_SOFT + ', 0 1px 2px rgba(15,23,42,.04), 0 10px 24px -16px rgba(15,23,42,.30)',
+      control: 'inset 0 0 0 1px ' + EDGE + ', 0 1px 1px rgba(15,23,42,.03)',
+      block: 'inset 0 0 0 1px ' + EDGE_SOFT,
+    };
+    var NUM = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' };
+
+    /** 文件名按「省略号放在后缀前」截断：很长的名字变成 很长…很长的名字.md */
+    function shortName(name, max) {
+      var s = String(name || '');
+      max = max || 30;
+      if (s.length <= max) return s;
+      var dot = s.lastIndexOf('.');
+      var ext = dot > 0 ? s.slice(dot) : '';
+      var base = dot > 0 ? s.slice(0, dot) : s;
+      if (ext.length >= max - 4) return s.slice(0, max - 1) + '…';
+      var keep = Math.max(4, max - ext.length - 1);
+      return base.slice(0, keep) + '…' + ext;
+    }
+
     var C = {
       wrap: { padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '18px', maxWidth: '760px' },
       card: {
-        border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.28))',
-        borderRadius: '12px', padding: '16px 18px',
+        borderRadius: R.card, padding: '16px 18px', boxShadow: SH.card,
         background: 'var(--dsw-alias-bg-layer-1, rgba(127,127,127,.06))',
         display: 'flex', flexDirection: 'column', gap: '12px',
       },
@@ -79,28 +105,31 @@ window.__ModuleLoader__.load({
       row: { display: 'flex', alignItems: 'center', gap: '10px' },
       label: { width: '150px', fontSize: '13px', color: 'var(--dsw-alias-label-secondary, inherit)', flexShrink: 0 },
       input: {
-        flex: 1, minWidth: 0, height: '32px', padding: '0 10px', borderRadius: '8px', fontSize: '13px',
-        border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))',
+        flex: 1, minWidth: 0, height: '32px', padding: '0 10px', borderRadius: R.control, fontSize: '13px',
+        boxShadow: SH.control, border: 'none',
         background: 'var(--dsw-alias-bg-base, transparent)', color: 'inherit', outline: 'none',
       },
-      num: { width: '110px', height: '32px', padding: '0 10px', borderRadius: '8px', fontSize: '13px',
-        border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))',
-        background: 'var(--dsw-alias-bg-base, transparent)', color: 'inherit', outline: 'none' },
-      area: { width: '100%', minHeight: '84px', padding: '10px', borderRadius: '8px', fontSize: '13px',
-        border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))',
+      num: { width: '110px', height: '32px', padding: '0 10px', borderRadius: R.control, fontSize: '13px',
+        boxShadow: SH.control, border: 'none',
+        background: 'var(--dsw-alias-bg-base, transparent)', color: 'inherit', outline: 'none',
+        fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' },
+      area: { width: '100%', minHeight: '84px', padding: '10px', borderRadius: R.control, fontSize: '13px',
+        boxShadow: SH.control, border: 'none',
         background: 'var(--dsw-alias-bg-base, transparent)', color: 'inherit', outline: 'none',
         fontFamily: 'inherit', resize: 'vertical' },
-      btn: { height: '34px', minWidth: '88px', padding: '0 18px', borderRadius: '8px', cursor: 'pointer',
-        fontSize: '13px', fontWeight: 600, color: '#fff', border: '1px solid rgba(0,0,0,.12)',
-        background: '#2f6fed', boxShadow: '0 1px 2px rgba(0,0,0,.18)' },
-      btnGhost: { height: '32px', padding: '0 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px',
-        border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))', background: 'transparent', color: 'inherit' },
+      btn: { height: '34px', minWidth: '88px', padding: '0 18px', borderRadius: R.control, cursor: 'pointer',
+        fontSize: '13px', fontWeight: 600, color: '#fff', border: 'none',
+        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(15,23,42,.18)',
+        background: '#2f6fed' },
+      btnGhost: { height: '32px', padding: '0 12px', borderRadius: R.control, cursor: 'pointer', fontSize: '13px',
+        boxShadow: SH.control, border: 'none', background: 'transparent', color: 'inherit' },
       grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' },
-      kv: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '10px 12px', borderRadius: '10px',
+      kv: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '10px 12px', borderRadius: R.block,
         background: 'var(--dsw-alias-bg-layer-2, rgba(127,127,127,.08))' },
       k: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary, rgba(127,127,127,.9))' },
-      v: { fontSize: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary, inherit)' },
-      msg: { fontSize: '12px', padding: '8px 10px', borderRadius: '8px',
+      v: { fontSize: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary, inherit)',
+        fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' },
+      msg: { fontSize: '12px', padding: '8px 10px', borderRadius: R.control,
         background: 'var(--dsw-alias-bg-layer-2, rgba(127,127,127,.1))' },
     };
 
@@ -319,16 +348,41 @@ window.__ModuleLoader__.load({
           };
           reader.readAsText(file);
         }
-        return h('div', { style: { marginTop: '10px' } },
+
+        var IDLE_OUTLINE = '1px dashed rgba(127,127,127,.32)';
+        var HOT_OUTLINE = '1px dashed rgba(47,111,237,.6)';
+        function paint(el, hot) {
+          if (!el || !el.style) return;
+          el.style.outline = hot ? HOT_OUTLINE : IDLE_OUTLINE;
+          el.style.background = hot ? 'rgba(47,111,237,.06)' : 'var(--dsw-alias-bg-base, rgba(127,127,127,.02))';
+          el.style.boxShadow = hot
+            ? '0 4px 14px -8px rgba(47,111,237,.45), 0 0 0 3px rgba(47,111,237,.10)'
+            : 'none';
+        }
+
+        var current = String((d && d.sPersona) || '').split(/[\\/]/).pop();
+
+        return h('div', { style: { marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' } },
           h('div', { style: C.label }, '专用人设文件'),
           h('div', {
-            style: { border: '1px dashed rgba(127,127,127,.45)', borderRadius: '10px', padding: '14px', marginTop: '6px', textAlign: 'center', fontSize: '13px' },
-            onDragOver: function (e) { e.preventDefault(); },
-            onDrop: function (e) { e.preventDefault(); readFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); },
+            style: {
+              borderRadius: R.block, padding: '18px 16px', textAlign: 'center',
+              outline: IDLE_OUTLINE, outlineOffset: '-1px',
+              background: 'var(--dsw-alias-bg-base, rgba(127,127,127,.02))',
+              boxShadow: 'none',
+              transition: 'background .15s ease, outline-color .15s ease, box-shadow .15s ease',
+            },
+            onDragOver: function (e) { e.preventDefault(); paint(e.currentTarget, true); },
+            onDragLeave: function (e) { paint(e.currentTarget, false); },
+            onDrop: function (e) {
+              e.preventDefault();
+              paint(e.currentTarget, false);
+              readFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+            },
           },
-            h('div', null, '把人设 .md 文件拖到这里'),
-            h('div', { style: Object.assign({}, C.hint, { margin: '8px 0' }) }, '或者'),
-            h('label', { style: Object.assign({}, C.btnGhost, { display: 'inline-block', cursor: 'pointer' }) },
+            h('div', { style: { fontSize: '13px', color: 'var(--dsw-alias-label-secondary, inherit)' } }, '把人设 .md 文件拖到这里'),
+            h('div', { style: Object.assign({}, C.hint, { margin: '5px 0 10px' }) }, '或'),
+            h('label', { style: Object.assign({}, C.btnGhost, { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }) },
               '选择文件',
               h('input', {
                 type: 'file', accept: '.md,.txt,text/markdown,text/plain',
@@ -337,12 +391,16 @@ window.__ModuleLoader__.load({
               })
             )
           ),
-          (d && d.sPersona)
-            ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' } },
-                h('span', { style: C.hint }, '当前：' + String(d.sPersona).split('/').pop()),
-                h('button', { style: Object.assign({}, C.btnGhost, { padding: '4px 10px', fontSize: '12px' }), onClick: function () { setD(function (prev) { var n = Object.assign({}, prev); n.sPersona = ''; return n; }); } }, '清除')
+          current
+            ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                h('span', { style: Object.assign({}, C.hint, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }), title: current },
+                  '当前：' + shortName(current, 30)),
+                h('button', {
+                  style: Object.assign({}, C.btnGhost, { height: '26px', padding: '0 10px', fontSize: '12px', flexShrink: 0 }),
+                  onClick: function () { setD(function (prev) { var n = Object.assign({}, prev); n.sPersona = ''; return n; }); },
+                }, '清除')
               )
-            : h('div', { style: Object.assign({}, C.hint, { marginTop: '8px' }) }, '不传 = 用默认人设')
+            : h('div', { style: Object.assign({}, C.hint, { margin: '2px 0 0' }) }, '不传 = 用默认人设')
         );
       }
 
