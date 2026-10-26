@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createClient, configureLogger, segment } from 'douyin-im';
 
 const DIR = process.env.DOUYIN_SOCIAL_DIR || path.dirname(fileURLToPath(import.meta.url));
@@ -82,8 +83,6 @@ function countReply() { state.replies = (state.replies || 0) + 1; saveState(stat
 // ---- 防误归档：会话被归档后，回合在 pre-step 就被拒（表现只是"没有产出文本"），
 //      这里提前认出来，回一句人话并把恢复标记交给看门狗，别让用户对着兜底话术猜。
 const ARCHIVE_FLAG = path.join(DIR, 'archived.flag');
-let archivedCacheAt = 0;
-let archivedCache = new Set();
 
 function mapFile() {
   const p = String(socialCfg().mapFile || '').trim();
@@ -95,8 +94,13 @@ function boundSessionId(key) {
     return typeof m[key] === 'string' ? m[key] : '';
   } catch (e) { return ''; }
 }
+/** 会话桥给这条 key 算出来的兜底 id（resume 失败时会落到它上面） */
+function stableIdOf(key) {
+  try {
+    return 'douyin-' + createHash('sha1').update(String(key)).digest('hex').slice(0, 12);
+  } catch (e) { return ''; }
+}
 function archivedSet() {
-  if (Date.now() - archivedCacheAt < 30000) return archivedCache;
   let set = new Set();
   const home = String(CFG.dshHome || process.env.DSH_HOME || '').trim();
   if (home) {
@@ -105,15 +109,16 @@ function archivedSet() {
       set = new Set((j.global && j.global.archivedSessionIds || []).map(String));
     } catch (e) {}
   }
-  archivedCacheAt = Date.now();
-  archivedCache = set;
   return set;
 }
-/** 归档了就返回那个 sessionId，否则空串 */
+/** 归档了就返回那个 sessionId（映射那条和兜底那条都认），否则空串 */
 function archivedSessionOf(key) {
   if (socialCfg().autoUnarchive === false) return '';
-  const sid = boundSessionId(key);
-  return sid && archivedSet().has(sid) ? sid : '';
+  const set = archivedSet();
+  for (const sid of [boundSessionId(key), stableIdOf(key)]) {
+    if (sid && set.has(sid)) return sid;
+  }
+  return '';
 }
 function flagArchived(sid, key) {
   try {
@@ -339,16 +344,6 @@ client.on('message', async function (ev) {
     }
     // 人设不再塞进消息正文 —— 启动时已经写进会话 cwd 的 AGENTS.md（见 applyPersona）
 
-    // 绑定的会话被归档了？先认出来：这种情况 DSH 那边一个字都不会生成，
-    // 再往下走只会拿到"没有产出文本"，用户对着兜底话术根本猜不到原因。
-    const archivedSid = archivedSessionOf(key);
-    if (archivedSid) {
-      log('ARCHIVED_DETECTED key=' + key + ' session=' + archivedSid);
-      flagArchived(archivedSid, key);
-      await ev.reply('我这边会话被归档了，正在恢复，过一会儿再发我一句就行');
-      return;
-    }
-
     let reply;
     try {
       const r = await fetch(BRIDGE, {
@@ -367,6 +362,15 @@ client.on('message', async function (ev) {
       log('BRIDGE_OK session=' + d.sessionId + ' len=' + String(reply || '').length);
     } catch (e) {
       log('BRIDGE_FAIL ' + (e && e.message || e));
+      // 失败再看一眼是不是归档：会话桥会自己解，能解就不会走到这里；
+      // 走到这里说明那层没生效（旧版宿主 / 没有 registry），退回到停服恢复。
+      const archivedSid = archivedSessionOf(key);
+      if (archivedSid) {
+        log('ARCHIVED_DETECTED key=' + key + ' session=' + archivedSid);
+        flagArchived(archivedSid, key);
+        await ev.reply('我这边会话被归档了，正在恢复，过一会儿再发我一句就行');
+        return;
+      }
       await ev.reply(FALLBACK);
       return;
     }

@@ -40,9 +40,39 @@ try {
   else { W ("start sid=" + $sid + " dshHome=(empty，需在 config.json 填 dshHome)" + " delay=" + $DelaySeconds) }
   Start-Sleep -Seconds $DelaySeconds
 
+  # 睡醒先看一眼：用户可能在这段时间里自己点了「撤销归档」。
+  # 那种情况下状态已经对了，再停一次宿主就是白折腾（还白断一次所有会话）。
+  if ($dshHome) {
+    $wsJson = Join-Path $dshHome 'storages\workspace.json'
+    if (Test-Path $wsJson) {
+      try {
+        $archived = (Get-Content $wsJson -Raw -Encoding UTF8 | ConvertFrom-Json).global.archivedSessionIds
+        if (-not ($archived -contains $sid)) {
+          W 'already unarchived by user -> stand down（不停宿主）'
+          Remove-Item $Flag -Force -ErrorAction SilentlyContinue
+          exit 0
+        }
+      } catch { W ('precheck failed: ' + $_.Exception.Message) }
+    }
+  }
+
   W 'stopping host'
   Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
-  for ($i = 0; $i -lt 60; $i++) { if (-not (PortListen $Port)) { break }; Start-Sleep -Seconds 1 }
+  for ($i = 0; $i -lt 40; $i++) { if (-not (PortListen $Port)) { break }; Start-Sleep -Seconds 1 }
+
+  # 服务没停干净时端口还占着，此时改文件等于白改（旧进程退出会写回内存状态）。
+  # 只杀 node 进程：3080 上还可能挂着系统服务的端口共享项，别手滑动它们。
+  if (PortListen $Port) {
+    foreach ($conn in @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
+      if (-not $conn) { continue }
+      $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($conn.OwningProcess)" -ErrorAction SilentlyContinue
+      if ($proc -and $proc.Name -eq 'node.exe') {
+        W ('port still busy by node pid=' + $proc.ProcessId + ' -> kill')
+        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+      }
+    }
+    Start-Sleep -Seconds 5
+  }
   W ('stopped; port free=' + (-not (PortListen $Port)))
 
   $nodeArgs = @((Join-Path $Dir 'register-workspace.mjs'), '--unarchive', $sid, '--port', "$Port")

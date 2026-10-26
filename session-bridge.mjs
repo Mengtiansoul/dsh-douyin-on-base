@@ -88,6 +88,34 @@ export function apply(ctx, config = {}) {
     } catch { return undefined }
   }
 
+  // ---- 被归档的会话：当场解开，别让整条链哑掉 -----------------------------
+  // 归档的会话会在 agent/pre-step 直接 reject，表现只有一句「没有产出文本」，
+  // 上层根本看不出原因。宿主内就有解归档的方法，不必停宿主去改文件。
+  const archiveApi = () => {
+    try {
+      const reg = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : undefined
+      return reg && typeof reg.unarchiveSession === 'function' ? reg : undefined
+    } catch { return undefined }
+  }
+
+  async function healArchived(ids) {
+    const reg = archiveApi()
+    if (!reg) return []
+    const archived = new Set((reg.archivedSessionIds || []).map(String))
+    const healed = []
+    for (const id of ids) {
+      if (!id || !archived.has(id)) continue
+      try {
+        await reg.unarchiveSession(id)
+        healed.push(id)
+        log('info', '会话被归档，已当场解归档：' + id)
+      } catch (error) {
+        log('warn', '解归档失败 ' + id + ' :: ' + ((error && error.message) || error))
+      }
+    }
+    return healed
+  }
+
   async function ensureWorkspace(sessionId) {
     const reg = registry()
     if (!reg) return false
@@ -186,6 +214,9 @@ export function apply(ctx, config = {}) {
     //   ③ create(key 推出的稳定 id) ← 真没有这条会话
     //   ④ create(随机后缀)          ← 磁盘有同名会话但 ①② 都接不上（最后兜底）
     const stableId = sessionIdFor(key)
+    // 映射里那条和兜底的 stableId 都可能被归档（历史遗留会同时存在两条）。
+    // 投递前先都捞一遍：归档的会话会在 pre-step 直接被拒，光看错误信息查不出来。
+    await healArchived([sessionId, stableId])
     // 工作区目录不存在就建出来（每个通道一个独立工作区，不塞进用户项目目录）
     try { fs.mkdirSync(cwd, { recursive: true }) } catch (e0) { log('warn', '创建工作区失败 ' + cwd + ' :: ' + ((e0 && e0.message) || e0)) }
     const tryResume = async (id, why) => {
@@ -202,6 +233,9 @@ export function apply(ctx, config = {}) {
     handle = await tryResume(sessionId, 'mapping')
     if (!handle && stableId !== sessionId) handle = await tryResume(stableId, 'stable-id')
     if (!handle) {
+      // 两条接续路径都失败 = 会话文件不在了（被删、被清理、被搬走）。
+      // 只能重建一条空会话：链路能继续，但上下文是真丢了，日志里写明白。
+      log('warn', '会话已不存在，重建空会话 ' + stableId + '（上下文丢失）:: ' + key)
       try {
         handle = await ctx.agents.create({ sessionId: stableId, meta: { cwd }, agentOptions, setup })
         log('info', 'created ' + key + ' -> ' + stableId)

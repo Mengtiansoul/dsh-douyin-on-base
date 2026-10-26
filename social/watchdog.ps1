@@ -37,6 +37,28 @@ if ($socialOff -eq 'true') {
 # ---- 防误归档：桥写了 archived.flag 就排一次恢复任务（桥活着也可能被归档，所以放在存活检查前）----
 $Flag = Join-Path $Dir 'archived.flag'
 if (Test-Path $Flag) {
+  # 用户可能已经自己点了「撤销归档」。先核对一眼再决定要不要排任务，
+  # 不然就是排一条「白停一次宿主」的任务出来。
+  $sid = ''
+  try { $sid = [string]((Get-Content $Flag -Raw -Encoding UTF8 | ConvertFrom-Json).sessionId) } catch {}
+  $dshHome = ''
+  try {
+    $dshHome = & node -e "const fs=require('fs');try{const j=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));process.stdout.write(String(j.dshHome||''))}catch(e){process.stdout.write('')}" $Cfg
+  } catch {}
+  if ($sid -and $dshHome -and $dshHome -ne 'null') {
+    $wsJson = Join-Path $dshHome 'storages\workspace.json'
+    if (Test-Path $wsJson) {
+      try {
+        $archived = (Get-Content $wsJson -Raw -Encoding UTF8 | ConvertFrom-Json).global.archivedSessionIds
+        if (-not ($archived -contains $sid)) {
+          W 'ARCHIVED_FLAG stale (user already unarchived) -> drop'
+          Remove-Item $Flag -Force -ErrorAction SilentlyContinue
+          exit 0
+        }
+      } catch {}
+    }
+  }
+
   $TaskName = 'dsh-douyin-recover-archived-once'
   $exist = (schtasks /query /tn $TaskName 2>$null)
   if ($LASTEXITCODE -ne 0) {
@@ -54,7 +76,8 @@ if (Test-Path $Flag) {
 
 if ($found.Count -gt 0) { exit 0 }
 
-W 'DOWN -> restarting'try {
+W 'DOWN -> restarting'
+try {
   Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' `
     -ArgumentList 'bridge.mjs' `
     -WorkingDirectory $Dir `
