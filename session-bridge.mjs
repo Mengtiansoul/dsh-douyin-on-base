@@ -141,20 +141,35 @@ export function apply(ctx, config = {}) {
     }
 
     let handle
-    // ① 先 resume：磁盘上已有这条会话就接回去。
-    //    这是「抖音下线重连仍是同一个会话」的关键 —— 原来只 create，
-    //    旧会话文件已存在 → create 冲突 → 每次重启都生一条新会话。
-    try {
-      handle = await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
-      log('info', 'resumed ' + key + ' -> ' + sessionId)
-    } catch (resumeError) {
-      log('info', 'resume missed (' + (resumeError && resumeError.message || resumeError) + '), creating ' + sessionId)
+
+    // 会话接续顺序（不能跳步，跳一步就会新建会话、上下文丢失）：
+    //   ① resume(映射里记的 id)  ← 正常路径
+    //   ② resume(key 推出的稳定 id) ← 映射丢了但会话还在
+    //   ③ create(key 推出的稳定 id) ← 真没有这条会话
+    //   ④ create(随机后缀)          ← 磁盘有同名会话但 ①② 都接不上（最后兜底）
+    const stableId = sessionIdFor(key)
+    // 工作区目录不存在就建出来（每个通道一个独立工作区，不塞进用户项目目录）
+    try { fs.mkdirSync(cwd, { recursive: true }) } catch (e0) { log('warn', '创建工作区失败 ' + cwd + ' :: ' + ((e0 && e0.message) || e0)) }
+    const tryResume = async (id, why) => {
       try {
-        handle = await ctx.agents.create({ sessionId, meta: { cwd }, agentOptions, setup })
+        const h = await ctx.agents.resume({ resumeSessionId: id, agentOptions, setup })
+        log('info', 'resumed(' + why + ') ' + key + ' -> ' + id)
+        return h
+      } catch (e) {
+        log('warn', 'resume(' + why + ') 失败 ' + id + ' :: ' + ((e && e.message) || e))
+        return null
+      }
+    }
+
+    handle = await tryResume(sessionId, 'mapping')
+    if (!handle && stableId !== sessionId) handle = await tryResume(stableId, 'stable-id')
+    if (!handle) {
+      try {
+        handle = await ctx.agents.create({ sessionId: stableId, meta: { cwd }, agentOptions, setup })
+        log('info', 'created ' + key + ' -> ' + stableId)
       } catch (createError) {
-        // 真撞了才换新 id（极少见，兜底用）
-        const fallback = sessionId + '-' + Math.random().toString(36).slice(2, 6)
-        log('warn', 'create failed (' + createError.message + '), retry as ' + fallback)
+        const fallback = stableId + '-' + Math.random().toString(36).slice(2, 6)
+        log('warn', 'create 冲突（' + ((createError && createError.message) || createError) + '），改用 ' + fallback + '（上下文会丢）')
         handle = await ctx.agents.create({ sessionId: fallback, meta: { cwd }, agentOptions, setup })
       }
     }

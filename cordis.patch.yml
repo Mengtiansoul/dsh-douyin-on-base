@@ -12,3 +12,4 @@
       name: './session-bridge.mjs'
       config:
         port: 3099
+        cwd: 'D:\Deepseek-Harness\Social\douyin'
