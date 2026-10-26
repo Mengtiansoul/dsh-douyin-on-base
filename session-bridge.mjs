@@ -62,6 +62,10 @@ export function apply(ctx, config = {}) {
   const mapFile = typeof config.mapFile === 'string' && config.mapFile
     ? config.mapFile
     : path.join(SELF_DIR, 'social', 'sessions.json')
+  /** 抖音会话落在哪个工作区分组里 —— 装上插件就该有这么个分组，不该让用户自己登记 */
+  const workspaceTitle = typeof config.workspaceTitle === 'string' && config.workspaceTitle.trim()
+    ? config.workspaceTitle.trim()
+    : 'Douyin'
 
   const log = (level, message) => {
     try {
@@ -73,6 +77,40 @@ export function apply(ctx, config = {}) {
   /** key -> { sessionId, handle, buffer, waiter, chain } */
   const bySession = new Map()
   const byKey = new Map()
+
+  // ---- 独立工作区：抖音的会话不该挤在用户自己的项目分组里 -----------------
+  // 用 ctx.get 而不是写进 inject：宿主没这个服务时要静默跳过，
+  // 不能因为一条必需依赖没满足就把整棵插件树拖成 pending。
+  const registry = () => {
+    try {
+      const reg = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : undefined
+      return reg && typeof reg.create === 'function' ? reg : undefined
+    } catch { return undefined }
+  }
+
+  async function ensureWorkspace(sessionId) {
+    const reg = registry()
+    if (!reg) return false
+    try {
+      let ws = await reg.resolveByPath(cwd)
+      if (!ws) {
+        ws = await reg.create(cwd, workspaceTitle)
+        log('info', '工作区已创建：' + workspaceTitle + '（' + cwd + '）')
+      } else if (ws.title !== workspaceTitle) {
+        const before = ws.title
+        await ws.setTitle(workspaceTitle)
+        log('info', '工作区改名：' + before + ' -> ' + workspaceTitle)
+      }
+      if (sessionId && !ws.sessionIds.includes(sessionId)) {
+        await ws.attachSession(sessionId)
+        log('info', '会话已挂进工作区：' + sessionId)
+      }
+      return true
+    } catch (error) {
+      log('warn', '工作区处理失败 :: ' + ((error && error.message) || error))
+      return false
+    }
+  }
 
   // ---- 会话映射持久化（重启后接着用同一条会话）--------------------------
   let mapping = {}
@@ -181,6 +219,8 @@ export function apply(ctx, config = {}) {
     mapping[key] = actual
     saveMapping()
     log('info', 'opened ' + key + ' -> ' + actual)
+    // 挂进工作区是旁路动作：失败也不能影响这条消息的投递
+    ensureWorkspace(actual).catch(() => {})
     return chat
   }
 
@@ -282,7 +322,20 @@ export function apply(ctx, config = {}) {
   server.on('error', (error) => log('error', 'http: ' + error.message))
   server.listen(port, '127.0.0.1', () => log('info', 'listening on 127.0.0.1:' + port))
 
+  // 启动即把工作区摆好（用户装完插件应当直接看到「Douyin」分组，哪怕还没收到消息）。
+  // workspaceRegistry 可能比本插件晚就绪，所以重试几次就收手。
+  let wsAttempts = 0
+  const ensureTimer = setInterval(() => {
+    wsAttempts += 1
+    ensureWorkspace().then((ok) => {
+      if (ok || wsAttempts >= 6) clearInterval(ensureTimer)
+    })
+  }, 5000)
+  ensureTimer.unref?.()
+  ensureWorkspace()
+
   ctx.effect?.(() => () => {
+    try { clearInterval(ensureTimer) } catch { /* ignore */ }
     try { server.close() } catch { /* ignore */ }
     for (const chat of byKey.values()) {
       try { chat.handle.dispose?.() } catch { /* ignore */ }
