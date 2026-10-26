@@ -1,0 +1,24 @@
+# 运行时数据（含密钥 / 登录态 / 日志），不进仓库
+config.json
+config.json.*
+state.json
+state.json.*
+browse-log.jsonl
+wake.log
+ui-requests.log
+*.log
+*.log.1
+*.bak
+*.bak-*
+node_modules/
+data/
+reports/
+backups/
+social/channels.json
+social/sessions.json
+social/bridge-state.json
+social/outbox.json
+social/persona-*.md
+social/*.flag
+social/*.log
+workspace/*.local.md

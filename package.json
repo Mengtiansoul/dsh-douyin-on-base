@@ -1,0 +1,52 @@
+{
+  "name": "dsh-douyin-on-base",
+  "version": "0.5.0",
+  "description": "DSH 抖音插件：内容模块（star-browser 刷推荐流/评估/互动）+ 社交模块（douyin-im 收发私信群聊，零浏览器）",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "private": false,
+  "dependencies": {
+    "douyin-im": "^1.1.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "douyin",
+    "tiktok",
+    "browser-automation",
+    "chatbot"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "index.mjs",
+    "session-bridge.mjs",
+    "cordis.patch.yml",
+    "lib/",
+    "ui/",
+    "social/bridge.mjs",
+    "social/watchdog.ps1",
+    "social/content-guard-loop.ps1",
+    "social/daily-report.mjs",
+    "social/daily-report-guide.md",
+    "workspace/AGENTS.md",
+    "README.md",
+    "LICENSE",
+    "docs/",
+    "social/selfcheck.ps1",
+    "social/backup.ps1",
+    "CHANGELOG.md"
+  ]
+}
