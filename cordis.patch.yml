@@ -1,0 +1,14 @@
+# 抖音助手 —— profile 层补丁
+# 两个 entry：工具本体（index.mjs）+ 设置面板的宿主半身（ui/host.mjs）
+# entry 名用**本包内的相对路径**（裸包名在 profile 的 ESM 解析基点下会 MODULE_NOT_FOUND）
+- insert:
+    - id: douyin-on-base
+      name: './index.mjs'
+    - id: douyin-on-base-ui
+      name: './ui/host.mjs'
+
+    # 会话桥：社交模块（social/bridge.mjs）通过 HTTP 3099 投消息、拿整段回复
+    - id: douyin-session-bridge
+      name: './session-bridge.mjs'
+      config:
+        port: 3099
