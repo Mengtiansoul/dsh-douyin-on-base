@@ -53,7 +53,7 @@ dsh plugin --profile web add link:/path/to/douyin-on-base
 ```
 
 `cordis.patch.yml` 里有三个 entry：工具本体、设置面板宿主半身、会话桥。
-抖音的消息会落在一条独立的工作区分组里，默认叫 **Douyin**（不塞进你自己的项目目录）；想改名在会话桥条目下加 `workspaceTitle: '你的名字'`。
+抖音的消息（私信、群、日报）都会落在一条独立的工作区分组里，会话桥自己登记，不用手工建，默认叫 **Douyin**（不塞进你自己的项目目录）；想改名在会话桥条目下加 `workspaceTitle: '你的名字'`。
 **想给社交会话指定某个 Agent 预设**（比如带你自定义人格的那个），在该文件的会话桥条目下加 `agentPreset: '你的预设id'`；不写就用宿主默认预设。
 
 ## 配置
