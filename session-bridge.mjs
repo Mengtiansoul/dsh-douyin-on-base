@@ -112,7 +112,7 @@ export function apply(ctx, config = {}) {
       return
     }
     if (!reply) {
-      waiter.reject(new Error('这一轮没有产出文本（可能只有工具调用）'))
+      waiter.reject(new Error('这一轮没有产出文本（结束原因 ' + ((reason && reason.kind) || '?') + '，可能是工具调用被权限挡掉）'))
       return
     }
     waiter.resolve(reply)
