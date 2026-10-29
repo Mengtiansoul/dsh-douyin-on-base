@@ -313,18 +313,46 @@ window.__ModuleLoader__.load({
         }, opts);
       }
 
-      /** 下拉（value + onChange 版本，给多时段行用） */
-      function timeSelectVal(val, onChange) {
-        var opts = [h('option', { value: '', key: 'none' }, '--:--')];
-        for (var hh = 0; hh < 24; hh++) {
-          for (var mi = 0; mi < 60; mi += 30) {
-            var v = (hh < 10 ? '0' : '') + hh + ':' + (mi === 0 ? '00' : '30');
-            opts.push(h('option', { value: v, key: v }, v));
-          }
+      /** 时间：可手打（900 → 09:00），失焦时自动补零/夹紧；不弹几十项的下拉 */
+      function normalizeHHMM(raw) {
+        var s = String(raw == null ? '' : raw).trim();
+        if (!s) return '';
+        var digits = s.replace(/[^0-9]/g, '');
+        if (digits.length === 3) digits = '0' + digits;          // 930 → 0930
+        if (digits.length === 4) {
+          var hh = Number(digits.slice(0, 2));
+          var mi = Number(digits.slice(2, 4));
+          if (hh > 23) hh = 23;
+          if (mi > 59) mi = 59;
+          return (hh < 10 ? '0' : '') + hh + ':' + (mi < 10 ? '0' : '') + mi;
         }
-        return h('select', { style: Object.assign({}, C.input, { flex: '0 0 110px' }), value: val || '', onChange: function (e) { onChange(e.target.value); } }, opts);
+        var m = s.match(/^(\d{1,2})\s*[:.：]\s*(\d{1,2})$/);
+        if (m) {
+          var h2 = Math.min(23, Number(m[1]));
+          var m2 = Math.min(59, Number(m[2]));
+          return (h2 < 10 ? '0' : '') + h2 + ':' + (m2 < 10 ? '0' : '') + m2;
+        }
+        return s; // 认不出来就原样留着，保存时会被过滤掉
       }
 
+      function timeSelectVal(val, onChange) {
+        return h('input', {
+          type: 'text',
+          inputMode: 'numeric',
+          placeholder: '--:--',
+          maxLength: 5,
+          value: val || '',
+          style: Object.assign({}, C.input, {
+            flex: '0 0 96px', textAlign: 'center',
+            fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1',
+          }),
+          onChange: function (e) { onChange(e.target.value); },
+          onBlur: function (e) {
+            var fixed = normalizeHHMM(e.target.value);
+            if (fixed !== e.target.value) { e.target.value = fixed; onChange(fixed); }
+          },
+        });
+      }
       function updateWindow(idx, field, val) {
         setD(function (prev) {
           var n = Object.assign({}, prev);
@@ -459,11 +487,14 @@ window.__ModuleLoader__.load({
       }
 
       /** 白名单勾选（群/好友），数据来自 /channels */
-      function channelPicker(label, key, kind) {
+      function channelPicker(label, hint, key, kind) {
         var list = (channels && channels[kind]) || [];
         var cur = String((d && d[key]) || '').split(/[，,]/).map(function (s) { return s.trim(); }).filter(Boolean);
         return h('div', { style: { marginTop: '10px' } },
-          h('div', { style: C.label }, label),
+          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', whiteSpace: 'nowrap', overflow: 'hidden' } },
+            h('div', { style: Object.assign({}, C.label, { width: 'auto' }) }, label),
+            h('div', { style: Object.assign({}, C.hint, { whiteSpace: 'nowrap' }) }, hint)
+          ),
           list.length === 0
             ? h('div', { style: C.hint }, channels ? '还没拉到列表（社交模块没登录过）' : '加载中…')
             : h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' } },
@@ -967,8 +998,8 @@ window.__ModuleLoader__.load({
             featureRow('sChPrivate', '私信通道', '一对一私聊'),
             featureRow('sChGroup', '群聊通道', '群消息（白名单见下）')
           ),
-          loading ? null : channelPicker('群白名单（不选 = 全部群）', 'sGroups', 'groups'),
-          loading ? null : channelPicker('好友白名单（不选 = 全部好友）', 'sFriends', 'friends'),
+          loading ? null : channelPicker('群白名单', '不选 = 全部群', 'sGroups', 'groups'),
+          loading ? null : channelPicker('好友白名单', '不选 = 全部好友', 'sFriends', 'friends'),
           loading ? null : h('div', null,
             field('分段间隔(ms)', 'sGap', { number: true, min: 0, max: 5000 }),
             field('单轮最多几段', 'sSegs', { number: true, min: 1, max: 20 })
