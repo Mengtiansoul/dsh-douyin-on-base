@@ -105,7 +105,7 @@ window.__ModuleLoader__.load({
       row: { display: 'flex', alignItems: 'center', gap: '10px' },
       label: { width: '150px', fontSize: '13px', color: 'var(--dsw-alias-label-secondary, inherit)', flexShrink: 0 },
       input: {
-        flex: 1, minWidth: 0, height: '32px', padding: '0 10px', borderRadius: R.control, fontSize: '13px',
+        flex: 1, minWidth: 0, height: '32px', padding: '0 10px', borderRadius: R.control, fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1',
         boxShadow: SH.control, border: 'none',
         background: 'var(--dsw-alias-bg-base, transparent)', color: 'inherit', outline: 'none',
       },
@@ -134,6 +134,9 @@ window.__ModuleLoader__.load({
       tabBase: { height: '32px', padding: '0 16px', borderRadius: R.control, cursor: 'pointer',
         fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', border: 'none',
         transition: 'background .15s ease, color .15s ease, box-shadow .15s ease' },
+      // 聚焦：不画 outline（会在某些浏览器上画一圈硬亮线，还把盒子撑大），
+      // 改成「inset 内环加深 + 外圈淡光晕」，和卡片阴影一个语言。
+      focusRing: 'inset 0 0 0 1px rgba(47,111,237,.80), 0 0 0 3px rgba(47,111,237,.16)',
       msg: { fontSize: '12px', padding: '8px 10px', borderRadius: R.control,
         background: 'var(--dsw-alias-bg-layer-2, rgba(127,127,127,.1))' },
     };
@@ -164,6 +167,14 @@ window.__ModuleLoader__.load({
       var setJustRefreshed = refreshedState[1];
 
       // 三页：general=总设置 / content=内容模块 / social=社交模块
+      // 未保存拦截：草稿变了、用户又要切页 → 弹窗问要不要先保存
+      var baselineState = useState(null);
+      var baseline = baselineState[0], setBaseline = baselineState[1];
+      var pendingState = useState(null);
+      var pendingTab = pendingState[0], setPendingTab = pendingState[1];
+      /** 保存成功后要执行的收尾动作（弹窗里点了「保存并切换」） */
+      var afterSaveAction = null;
+
       var tabState = useState('general');
       var tab = tabState[0], setTab = tabState[1];
       var rstState = useState(false);
@@ -191,7 +202,7 @@ window.__ModuleLoader__.load({
       function hydrate(data) {
         setCfg(data.config);
         setState(data.state || null);
-        setD({
+        var __draft = {
           apiKey: '',
           apiBase: data.config.vision.apiBase || '',
           model: data.config.vision.model || '',
@@ -241,7 +252,9 @@ window.__ModuleLoader__.load({
           sSticker: !!(data.config.social && data.config.social.allowSticker),
           sCard: !!(data.config.social && data.config.social.allowCard),
           sOutbox: !!(data.config.social && data.config.social.allowOutbox),
-        });
+        };
+        setD(__draft);
+        setBaseline(JSON.stringify(__draft));
       }
 
       useEffect(function () {
@@ -591,6 +604,11 @@ window.__ModuleLoader__.load({
             setSaving(false);
             if (ok) {
               setJustSaved(true);
+              if (afterSaveAction) {
+                var __after = afterSaveAction;
+                afterSaveAction = null;
+                try { __after(); } catch (e) { /* 收尾动作失败不影响保存 */ }
+              }
               setInfo('✅ 已保存，立即生效');
               setTimeout(function () { setJustSaved(false); }, 2000);
               setTimeout(function () { setInfo(''); }, 2500);
@@ -638,6 +656,47 @@ window.__ModuleLoader__.load({
         );
       }
 
+      /** 草稿和加载时的快照有没有差别 */
+      function isDirty() {
+        if (!d || baseline == null) return false;
+        try { return JSON.stringify(d) !== baseline; } catch (e) { return false; }
+      }
+
+      function goto(kind) {
+        if (kind === tab) return;
+        if (isDirty()) { setPendingTab(kind); return; }
+        setTab(kind);
+      }
+
+      /** 少于五个固定选项：用单选，别藏在下拉里 */
+      function radioRow(label, key, options) {
+        return h('div', { style: C.row, key: key },
+          h('div', { style: C.label }, label),
+          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '14px', minWidth: 0 } },
+            options.map(function (o) {
+              var on = d && d[key] === o.value;
+              return h('label', {
+                key: o.value,
+                style: {
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  fontSize: '13px', cursor: 'pointer',
+                  color: on ? 'var(--dsw-alias-label-primary, inherit)' : 'var(--dsw-alias-label-secondary, inherit)',
+                },
+              },
+                h('input', {
+                  type: 'radio', name: key, checked: on,
+                  style: { margin: 0, accentColor: '#2f6fed', cursor: 'pointer' },
+                  onChange: function () {
+                    setD(function (prev) { var n = Object.assign({}, prev); n[key] = o.value; return n; });
+                  },
+                }),
+                o.label
+              );
+            })
+          )
+        );
+      }
+
       /** 单个功能开关（圆角按钮，点一下切状态，改动只落草稿） */
       function featureRow(key, label, hint) {
         var on = !!(d && d[key]);
@@ -668,7 +727,9 @@ window.__ModuleLoader__.load({
       }
       var loading = !d || !cfg;
 
-      return h('div', { style: C.wrap },
+      return h('div', { style: C.wrap,
+        onFocus: function (e) { var el = e.target; if (el && el.style && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) { el.style.boxShadow = C.focusRing; el.style.outline = 'none'; } },
+        onBlur: function (e) { var el = e.target; if (el && el.style && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) { el.style.boxShadow = SH.control; } } },
         h('div', null,
           h('div', { style: { fontSize: '16px', fontWeight: 700 } }, '抖音助手'),
           h('div', { style: C.hint }, '改完点保存就生效，不用重启。')
@@ -686,10 +747,42 @@ window.__ModuleLoader__.load({
               style: Object.assign({}, C.tabBase, active
                 ? { color: '#fff', background: '#2f6fed', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(15,23,42,.18)' }
                 : { color: 'inherit', background: 'transparent', boxShadow: SH.control }),
-              onClick: function () { setTab(kv[0]); },
+              onClick: function () { goto(kv[0]); },
             }, kv[1]);
           })
         ),
+
+        /* ---------- 未保存拦截弹窗 ---------- */
+        pendingTab ? h('div', {
+          style: {
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(15,23,42,.38)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px',
+          },
+          onClick: function (e) { if (e.target === e.currentTarget) setPendingTab(null); },
+        },
+          h('div', {
+            style: Object.assign({}, C.card, {
+              maxWidth: '360px', width: '100%', background: 'var(--dsw-alias-bg-layer-1, #fff)',
+              boxShadow: 'inset 0 0 0 1px rgba(127,127,127,.18), 0 18px 48px -18px rgba(15,23,42,.45)',
+            }),
+          },
+            h('div', { style: C.title }, '这一页还有改动没保存'),
+            h('div', { style: C.hint }, '要切到「' + (({ general: '总设置', content: '内容模块', social: '社交模块' })[pendingTab] || pendingTab) + '」，先处理一下：'),
+            h('div', { style: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' } },
+              h('button', { style: C.btnGhost, onClick: function () { setPendingTab(null); } }, '取消'),
+              h('button', {
+                style: C.btn, disabled: saving,
+                onClick: function () {
+                  var target = pendingTab;
+                  afterSaveAction = function () { setPendingTab(null); setTab(target); };
+                  save();
+                },
+              }, saving ? '保存中…' : '保存并切换')
+            )
+          )
+        ) : null,
 
         /* ---------- API 配置 ---------- */
         h('div', { style: Object.assign({}, C.card, cardVis('general')) },
@@ -865,20 +958,10 @@ window.__ModuleLoader__.load({
           h('div', { style: C.title }, '社交模块'),
           h('div', { style: C.hint }, '私信与群聊只在这里配置。不依赖浏览器，也不受内容模块影响。'),
           loading ? null : personaPicker(),
-          loading ? null : h('div', { style: C.row },
-            h('div', { style: C.label }, '回复触发'),
-            h('select', {
-              style: C.input,
-              value: d.sTrigger,
-              onChange: function (e) {
-                var nv = e.target.value;
-                setD(function (prev) { var n = Object.assign({}, prev); n.sTrigger = nv; return n; });
-              },
-            },
-              h('option', { value: 'mention' }, '群里仅 @ 才回'),
-              h('option', { value: 'auto' }, '自行判断要不要回')
-            )
-          ),
+          loading ? null : radioRow('回复触发', 'sTrigger', [
+            { value: 'mention', label: '群里仅 @ 才回' },
+            { value: 'auto', label: '自行判断要不要回' },
+          ]),
           loading ? null : field('每日回复上限', 'sDailyLimit', { number: true, min: 0, max: 200, suffix: '条/天' }),
           loading ? null : h('div', null,
             featureRow('sChPrivate', '私信通道', '一对一私聊'),
