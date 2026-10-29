@@ -22,3 +22,5 @@ social/persona-*.md
 social/*.flag
 social/*.log
 workspace/*.local.md
+social/desire-state.json
+social/desire-task.txt
