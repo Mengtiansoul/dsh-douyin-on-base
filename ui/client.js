@@ -845,7 +845,7 @@ window.__ModuleLoader__.load({
               onClick: addAiWindow,
             }, '＋ 添加时间段')
           ),
-          loading ? null : h('div', { style: Object.assign({}, C.row, { marginTop: '10px' }) },
+          loading ? null : h('div', { style: { marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' } },
             field('每天最多', 'abMaxPerDay', { number: true, min: 0, max: 6, suffix: '次' }),
             field('两次间隔', 'abCool', { number: true, min: 0, max: 12, suffix: '小时' })
           )
