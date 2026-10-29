@@ -65,6 +65,7 @@ const SESSION_ID = process.env.DOUYIN_SESSION_ID || 'douyin-worker-1';
 const RPC_TIMEOUT = 60000;
 
 import { loadConfig, DEFAULT_CONFIG } from './lib/config-store.mjs';
+import { startAutomation } from './lib/automation.mjs';
 
 /** 两次 douyin_next 间隔在 [1s, 120s] 内才计入浏览时长 */
 const MIN_GAP_MS = 1000;
@@ -2162,6 +2163,19 @@ async function apply(ctx) {
       }
     };
   }, 'douyin-on-base: social-bridge');
+
+  // ---- 宿主内自动化 --------------------------------------------------------
+  // 守卫（到点/超限/被打断就关浏览器）、日报（23:59 兜底）、主动刷（可选）。
+  // 以前这些是「Windows 计划任务 + PowerShell 脚本」，用户装完还得自己去建任务；
+  // 挪进宿主后，两行命令装完就能用。dsh 的原生计划任务还开着的也不冲突（幂等）。
+  ctx.effect(() => {
+    const dispose = startAutomation({
+      logger,
+      getConfig: () => { try { return reloadCfg(); } catch { return CFG || {}; } },
+      dshBin: process.argv[1],
+    });
+    return () => { try { dispose(); } catch {} };
+  }, 'douyin-on-base: in-host automation');
 }
 
 export { name, apply, inject };
