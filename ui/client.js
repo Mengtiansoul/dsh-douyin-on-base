@@ -217,6 +217,13 @@ window.__ModuleLoader__.load({
             if (Array.isArray(s.windows)) return s.windows.map(function (w) { return { start: (w && w.start) || '', end: (w && w.end) || '' }; });
             return [];
           })(),
+          aiWindows: (function () {
+            var a = data.config.autoBrowse || {};
+            if (Array.isArray(a.windows)) return a.windows.map(function (w) { return { start: (w && w.start) || '', end: (w && w.end) || '' }; });
+            return [];
+          })(),
+          abMaxPerDay: (data.config.autoBrowse && data.config.autoBrowse.maxPerDay) || 2,
+          abCool: (data.config.autoBrowse && data.config.autoBrowse.cooldownHours) || 3,
           prefKeywords: ((data.config.preferences && data.config.preferences.keywords) || []).join('，'),
           aiEnabled: !!(data.config.autoInteract && data.config.autoInteract.enabled),
           aiMinScore: (data.config.autoInteract && data.config.autoInteract.minScore) || 7,
@@ -330,6 +337,35 @@ window.__ModuleLoader__.load({
           var arr = (n.schWindows || []).slice();
           arr.splice(idx, 1);
           n.schWindows = arr;
+          return n;
+        });
+      }
+
+      function updateAiWindow(idx, field, val) {
+        setD(function (prev) {
+          var n = Object.assign({}, prev);
+          var arr = (n.aiWindows || []).slice();
+          arr[idx] = Object.assign({}, arr[idx]);
+          arr[idx][field] = val;
+          n.aiWindows = arr;
+          return n;
+        });
+      }
+
+      function addAiWindow() {
+        setD(function (prev) {
+          var n = Object.assign({}, prev);
+          n.aiWindows = (n.aiWindows || []).concat([{ start: '', end: '' }]);
+          return n;
+        });
+      }
+
+      function removeAiWindow(idx) {
+        setD(function (prev) {
+          var n = Object.assign({}, prev);
+          var arr = (n.aiWindows || []).slice();
+          arr.splice(idx, 1);
+          n.aiWindows = arr;
           return n;
         });
       }
@@ -516,6 +552,11 @@ window.__ModuleLoader__.load({
           },
           schedule: {
             windows: (d.schWindows || []).filter(function (w) { return w && w.start && w.end; }),
+          },
+          autoBrowse: {
+            windows: (d.aiWindows || []).filter(function (w) { return w && w.start && w.end; }),
+            maxPerDay: Number(d.abMaxPerDay) || 2,
+            cooldownHours: Number(d.abCool) === 0 ? 0 : (Number(d.abCool) || 3),
           },
           preferences: {
             keywords: String(d.prefKeywords || '').split(/[，,]/).map(function (s) { return s.trim(); }).filter(Boolean),
@@ -777,6 +818,36 @@ window.__ModuleLoader__.load({
               style: Object.assign({}, C.btnGhost, { marginTop: '10px' }),
               onClick: addWindow,
             }, '＋ 添加时间段')
+          )
+        ),
+
+        /* ---------- 内容：主动刷时段 ---------- */
+        h('div', { style: Object.assign({}, C.card, cardVis('content')) },
+          h('div', { style: C.title }, '主动刷时段'),
+          h('div', { style: C.hint }, '没人叫你、它自己想刷一会儿的时候，只在这几段里刷。一条都不加 = 全天都可能。'),
+          loading ? null : h('div', null,
+            h('div', null, (d.aiWindows || []).length
+              ? (d.aiWindows || []).map(function (w, idx) {
+                  return h('div', { key: idx, style: Object.assign({}, C.row, { marginTop: '8px' }) },
+                    timeSelectVal(w.start, function (v) { updateAiWindow(idx, 'start', v); }),
+                    h('span', { style: C.hint }, '到'),
+                    timeSelectVal(w.end, function (v) { updateAiWindow(idx, 'end', v); }),
+                    h('button', {
+                      style: Object.assign({}, C.btnGhost, { marginLeft: 'auto', padding: '5px 10px' }),
+                      onClick: function () { removeAiWindow(idx); },
+                    }, '删除')
+                  );
+                })
+              : h('div', { style: Object.assign({}, C.hint, { marginTop: '8px' }) }, '还没添加时段 —— 全天都可能自己刷。')
+            ),
+            h('button', {
+              style: Object.assign({}, C.btnGhost, { marginTop: '10px' }),
+              onClick: addAiWindow,
+            }, '＋ 添加时间段')
+          ),
+          loading ? null : h('div', { style: Object.assign({}, C.row, { marginTop: '10px' }) },
+            field('每天最多', 'abMaxPerDay', { number: true, min: 0, max: 6, suffix: '次' }),
+            field('两次间隔', 'abCool', { number: true, min: 0, max: 12, suffix: '小时' })
           )
         ),
 

@@ -1538,6 +1538,10 @@ async function apply(ctx) {
         rememberAgent(exec);
       const st = loadState();
       const want = (args.action || 'like') === 'like';
+      const maxLikes = Number((CFG && CFG.limits && CFG.limits.likesPerDay) ?? 3);
+      if (want && Number.isFinite(maxLikes) && maxLikes >= 0 && st.likes >= maxLikes) {
+        return { text: `⛔ 今天已经点了 ${st.likes} 个赞，到上限 ${maxLikes} 了，别点了。` };
+      }
       const gate = await qualityGate('点赞', st);
       const r = await pressReaction('video-player-digg', 'z', want);
       if (r.changed) { st.likes += want ? 1 : -1; if (st.likes < 0) st.likes = 0; saveState(st); }
