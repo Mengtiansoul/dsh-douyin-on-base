@@ -830,7 +830,8 @@ window.__ModuleLoader__.load({
           loading ? null : h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
             h('div', { style: C.label }, '自定义提示词'),
             h('textarea', {
-              style: C.area,
+              style: Object.assign({}, C.area, { display: 'block', minHeight: '88px', maxHeight: '240px', lineHeight: '1.6' }),
+              rows: 4,
               value: d.prompt,
               placeholder: '留空则用内置的「短视频审核员」提示词（画面内容 / 内容类型 / 1-10 分 / 建议）',
               onChange: function (e) { setD(function (p) { var n = Object.assign({}, p); n.prompt = e.target.value; return n; }); },
@@ -899,7 +900,18 @@ window.__ModuleLoader__.load({
 
         /* ---------- 总设置：最近一篇日报 ---------- */
         h('div', { style: Object.assign({}, C.card, cardVis('general')) },
-          h('div', { style: C.title }, '最近一篇刷视频日报'),
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } },
+            h('div', { style: C.title }, '最近一篇刷视频日报'),
+            h('button', {
+              style: Object.assign({}, C.btnGhost, { marginLeft: 'auto', height: '28px', padding: '0 12px', fontSize: '12px' }),
+              onClick: function () {
+                postJson('/report/open', {}).then(function (r) {
+                  if (r && r.ok && r.body && r.body.ok) setInfo('已打开日记目录：' + r.body.dir);
+                  else setErr('打开失败：' + ((r.body && r.body.error) || ('HTTP ' + r.status)));
+                }).catch(function (e) { setErr('打开失败：' + (e && e.message ? e.message : e)); });
+              },
+            }, '打开日记文件')
+          ),
           h('div', { style: C.hint }, '刷到每日上限时生成，或每天 23:59 兜底生成。'),
           report
             ? h('div', null,
@@ -1000,13 +1012,12 @@ window.__ModuleLoader__.load({
           ),
           loading ? null : channelPicker('群白名单', '不选 = 全部群', 'sGroups', 'groups'),
           loading ? null : channelPicker('好友白名单', '不选 = 全部好友', 'sFriends', 'friends'),
-          loading ? null : h('div', null,
+          loading ? null : h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
             field('分段间隔(ms)', 'sGap', { number: true, min: 0, max: 5000 }),
             field('单轮最多几段', 'sSegs', { number: true, min: 1, max: 20 })
           ),
           loading ? null : h('div', null,
             featureRow('sSticker', '允许发收藏表情', '发你收藏的图片表情'),
-            featureRow('sCard', '允许发视频卡片', '把视频以卡片形式发出去'),
             featureRow('sOutbox', '允许主动投递', '允许她主动发消息给你或群里')
           )
         ),

@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
 import {
   loadConfig, saveConfig, maskedForPanel, stateSummary, sanitizePatch,
   CONFIG_FILE, STATE_FILE, DEFAULT_CONFIG,
@@ -205,7 +206,19 @@ export function apply(ctx) {
         }
 
         // 最近一篇刷视频日报（txt）
-        if (url.pathname === API_PATH + '/report' && req.method === 'GET') {
+        // 打开日报目录（给面板上的「打开日记文件」按钮用）
+      if (url.pathname === API_PATH + '/report/open' && req.method === 'POST') {
+        const dir = path.join(HERE, '..', 'reports');
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+          execFile('explorer.exe', [dir], { windowsHide: false }, () => {});
+          return send(200, { ok: true, dir: dir });
+        } catch (e) {
+          return send(500, { ok: false, error: e && e.message ? e.message : String(e) });
+        }
+      }
+
+      if (url.pathname === API_PATH + '/report' && req.method === 'GET') {
           try {
             const dir = process.env.DOUYIN_REPORT_DIR
               || path.join(HERE, '..', 'reports');
