@@ -42,6 +42,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 
 const name = 'douyin-on-base';
 const inject = ['tools', 'agents'];
@@ -2108,6 +2109,59 @@ async function apply(ctx) {
     })().catch(() => {});
     return () => { stopped = true; };
   }, 'douyin-on-base: sse-wake');
+
+  // ---- 社交桥自启 ----------------------------------------------------------
+  // social/bridge.mjs 是独立进程（douyin-im 的长连接），插件本体只跑在宿主里。
+  // 没人拉起它的话，用户装完只有一堆工具、永远收不到私信——所以这里负责带起来。
+  // 已经有人在跑（本机计划任务 / 手动起的）就先探一下，避免双开抢登录态。
+  ctx.effect(() => {
+    let child = null;
+    let stopped = false;
+    let port = 3099;
+    try {
+      const c = reloadCfg();
+      if (c && c.social && Number(c.social.port)) port = Number(c.social.port);
+    } catch { /* 配置读不到就用默认端口 */ }
+
+    const alive = async () => {
+      try {
+        const r = await fetch('http://127.0.0.1:' + port + '/health', { signal: AbortSignal.timeout(1500) });
+        return r.ok;
+      } catch { return false; }
+    };
+
+    (async () => {
+      await sleep(1500);
+      if (stopped) return;
+      try {
+        const c = reloadCfg();
+        if (c && c.modules && c.modules.social === false) {
+          logger.info('[douyin-on-base] 社交模块已关闭，不启动社交桥');
+          return;
+        }
+      } catch { /* 配置异常时按默认继续 */ }
+      if (await alive()) {
+        logger.info('[douyin-on-base] 社交桥已在运行（' + port + '），不重复启动');
+        return;
+      }
+      try {
+        const dir = path.join(HERE, 'social');
+        child = spawn(process.execPath, [path.join(dir, 'bridge.mjs')], {
+          cwd: dir, detached: false, stdio: 'ignore', windowsHide: true,
+        });
+        logger.info('[douyin-on-base] 社交桥已启动 pid=' + child.pid);
+      } catch (e) {
+        logger.warn('[douyin-on-base] 社交桥启动失败: ' + ((e && e.message) || e));
+      }
+    })().catch(() => {});
+
+    return () => {
+      stopped = true;
+      if (child && !child.killed) {
+        try { child.kill(); } catch { /* 宿主退出时杀不掉也无妨，下次探活会认出来 */ }
+      }
+    };
+  }, 'douyin-on-base: social-bridge');
 }
 
 export { name, apply, inject };

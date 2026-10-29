@@ -125,6 +125,17 @@ powershell -ExecutionPolicy Bypass -File social\selfcheck.ps1
   或只跑社交模块（它不依赖这些脚本）。
 - Node ≥ 20（`douyin-im` 要求 22.5+，社交模块请用 Node 22.5 以上）。
 
+## 装完还要做什么
+
+插件自己会做的事：拉起社交桥（`social/bridge.mjs`）、建 `Douyin` 工作区、注册 `douyin_*` 与 `star_*` 工具。
+
+剩下这几件要你手动来一次：
+
+1. **视觉模型**（内容模块评分用）：设置 → 总设置 → API Key / Base / 模型。不填也能刷，只是打不了分。
+2. **抖音登录**（社交模块）：设置 → 社交模块 → 第一次扫码或短信登录，登录态存 `data/`，之后自动恢复。
+3. **浏览器管家跑在桌面会话里**（Windows）：它要以**当前登录用户**跑，不能当系统服务——SYSTEM 会话里 Edge 起不来。用 `npx star-browser-launch` 或包里的启动脚本。
+4. **想开自动的事**（可选）：`social/content-guard-loop.ps1`（到点关浏览器）、`social/daily-report.mjs`（每晚写日记）、`social/douyin-desire.mjs`（主动刷）都要你按 README 各配一个计划任务；插件不替你写系统任务。
+
 ## 首次启动会做什么
 
 1. `config.json` 不存在 → 自动写入一份全默认配置（空密钥、空白名单、上限 60 分钟、自动互动关闭）
